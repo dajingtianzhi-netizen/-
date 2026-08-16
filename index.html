@@ -66,7 +66,7 @@
         .gold { color: var(--accent-gold); }
 
         .log-area {
-            height: 220px;
+            height: 200px;
             background: #111;
             border: 1px solid var(--border-color);
             border-radius: 6px;
@@ -120,6 +120,14 @@
         }
 
         .hidden { display: none; }
+
+        .mask-screen {
+            text-align: center;
+            padding: 30px;
+            background: #111;
+            border-radius: 8px;
+            border: 2px dashed var(--accent-gold);
+        }
     </style>
 </head>
 <body>
@@ -129,33 +137,45 @@
 
     <!-- 1. ゲーム準備画面 -->
     <div id="setup-screen">
-        <label>配分ルールの選択:</label>
-        <select id="mode-select" onchange="toggleCardSelect()">
+        <label>対戦モード:</label>
+        <select id="game-mode-select" onchange="toggleSetupUI()">
+            <option value="vs-ai">1人プレイ (VS AI)</option>
+            <option value="pvp">2人対戦 (1端末交代プレイ)</option>
+        </select>
+
+        <label>配分ルール:</label>
+        <select id="card-mode-select" onchange="toggleSetupUI()">
             <option value="1">全所持型（一覧からカードを選択）</option>
             <option value="2">ランダム配布型（ランダムで1枚配布）</option>
         </select>
 
-        <div id="card-select-group">
-            <label>持参する役職カードを選択:</label>
-            <select id="initial-card-select"></select>
-            <div id="selected-card-desc" class="card-desc"></div>
+        <div id="p1-card-group">
+            <label id="p1-card-label">プレイヤー1 持参カード:</label>
+            <select id="p1-initial-card"></select>
+            <div id="p1-card-desc" class="card-desc"></div>
+        </div>
+
+        <div id="p2-card-group">
+            <label>プレイヤー2 持参カード:</label>
+            <select id="p2-initial-card"></select>
+            <div id="p2-card-desc" class="card-desc"></div>
         </div>
 
         <button onclick="startGame()">ゲーム開始</button>
     </div>
 
-    <!-- 2. ゲームプレイ画面 -->
+    <!-- 2. ゲーム画面 -->
     <div id="game-screen" class="hidden">
         <div class="status-board">
             <div class="player-status">
-                <h3>あなた</h3>
-                <div>銀貨: <span id="p-silver" class="stat-val silver">50</span>枚</div>
-                <div>金貨: <span id="p-gold" class="stat-val gold">0</span>枚</div>
+                <h3 id="p1-name-display">あなた</h3>
+                <div>銀貨: <span id="p1-silver" class="stat-val silver">50</span>枚</div>
+                <div>金貨: <span id="p1-gold" class="stat-val gold">0</span>枚</div>
             </div>
             <div class="player-status">
-                <h3>AI</h3>
-                <div>銀貨: <span id="ai-silver" class="stat-val silver">50</span>枚</div>
-                <div>金貨: <span id="ai-gold" class="stat-val gold">0</span>枚</div>
+                <h3 id="p2-name-display">AI</h3>
+                <div>銀貨: <span id="p2-silver" class="stat-val silver">50</span>枚</div>
+                <div>金貨: <span id="p2-gold" class="stat-val gold">0</span>枚</div>
             </div>
         </div>
 
@@ -165,7 +185,10 @@
 
         <div class="log-area" id="game-log"></div>
 
+        <!-- 入力パネル -->
         <div class="control-panel" id="action-panel">
+            <div id="turn-indicator" style="font-weight:bold; color:var(--accent-gold); margin-bottom:10px;"></div>
+
             <label id="silver-input-label">提示する銀貨枚数:</label>
             <input type="number" id="silver-choice" min="1" max="46" value="10">
 
@@ -176,7 +199,14 @@
             </select>
             <div id="my-card-info" class="card-desc"></div>
 
-            <button id="submit-btn" onclick="playRound()">決定して勝負！</button>
+            <button id="submit-btn" onclick="handleInputSubmit()">決定</button>
+        </div>
+
+        <!-- 交代用隠し画面 -->
+        <div id="mask-panel" class="mask-screen hidden">
+            <h3 id="mask-title">プレイヤー1の入力完了</h3>
+            <p>相手に画面を見られないように端末を渡してください。</p>
+            <button onclick="proceedToP2Turn()">プレイヤー2のターンを開始</button>
         </div>
 
         <button id="restart-btn" class="hidden" onclick="resetGame()">もう一度遊ぶ</button>
@@ -194,34 +224,52 @@ const ROLES = {
     7: { name: "農民", desc: "勝利時、獲得金貨が相手の提示した銀貨の枚数になる" }
 };
 
+let gameMode = "vs-ai";
 let currentRound = 1;
-let pSilver = 50, aiSilver = 50;
-let pGold = 0, aiGold = 0;
-let pPrevChoice = 0, aiPrevChoice = 0;
-let pCard = null, aiCard = null;
-let pUsedCard = false, aiUsedCard = false;
+let p1Silver = 50, p2Silver = 50;
+let p1Gold = 0, p2Gold = 0;
+let p1PrevChoice = 0, p2PrevChoice = 0;
+let p1Card = null, p2Card = null;
+let p1UsedCard = false, p2UsedCard = false;
 
-// 初期ロード時の処理
+// ターン一時保存（PvP用）
+let p1ChoiceTemp = 0, p1RoleTemp = null;
+let currentTurnPlayer = 1; // 1 or 2
+
 window.onload = function() {
-    const cardSelect = document.getElementById('initial-card-select');
-    for (let id in ROLES) {
-        let opt = document.createElement('option');
-        opt.value = id;
-        opt.textContent = `${ROLES[id].name}`;
-        cardSelect.appendChild(opt);
-    }
-    cardSelect.onchange = updateCardDesc;
-    updateCardDesc();
+    setupCardDropdowns();
+    toggleSetupUI();
 };
 
-function toggleCardSelect() {
-    const mode = document.getElementById('mode-select').value;
-    document.getElementById('card-select-group').style.display = (mode === "1") ? "block" : "none";
+function setupCardDropdowns() {
+    ['p1-initial-card', 'p2-initial-card'].forEach(id => {
+        const select = document.getElementById(id);
+        select.innerHTML = '';
+        for (let rId in ROLES) {
+            let opt = document.createElement('option');
+            opt.value = rId;
+            opt.textContent = ROLES[rId].name;
+            select.appendChild(opt);
+        }
+    });
+    document.getElementById('p1-initial-card').onchange = () => updateCardDesc('p1');
+    document.getElementById('p2-initial-card').onchange = () => updateCardDesc('p2');
+    updateCardDesc('p1');
+    updateCardDesc('p2');
 }
 
-function updateCardDesc() {
-    const id = document.getElementById('initial-card-select').value;
-    document.getElementById('selected-card-desc').textContent = ROLES[id].desc;
+function updateCardDesc(player) {
+    const id = document.getElementById(`${player}-initial-card`).value;
+    document.getElementById(`${player}-card-desc`).textContent = ROLES[id].desc;
+}
+
+function toggleSetupUI() {
+    gameMode = document.getElementById('game-mode-select').value;
+    const cardMode = document.getElementById('card-mode-select').value;
+    
+    document.getElementById('p1-card-group').style.display = (cardMode === "1") ? "block" : "none";
+    document.getElementById('p2-card-group').style.display = (cardMode === "1" && gameMode === "pvp") ? "block" : "none";
+    document.getElementById('p1-card-label').textContent = (gameMode === "pvp") ? "プレイヤー1 持参カード:" : "持参する役職カードを選択:";
 }
 
 function log(msg, isAlert = false) {
@@ -234,31 +282,45 @@ function log(msg, isAlert = false) {
 }
 
 function startGame() {
-    const mode = document.getElementById('mode-select').value;
-    if (mode === "1") {
-        pCard = parseInt(document.getElementById('initial-card-select').value);
+    const cardMode = document.getElementById('card-mode-select').value;
+    
+    if (cardMode === "1") {
+        p1Card = parseInt(document.getElementById('p1-initial-card').value);
+        p2Card = (gameMode === "pvp") ? parseInt(document.getElementById('p2-initial-card').value) : Math.floor(Math.random() * 7) + 1;
     } else {
-        pCard = Math.floor(Math.random() * 7) + 1;
+        p1Card = Math.floor(Math.random() * 7) + 1;
+        p2Card = Math.floor(Math.random() * 7) + 1;
     }
-    aiCard = Math.floor(Math.random() * 7) + 1;
+
+    document.getElementById('p1-name-display').textContent = (gameMode === "pvp") ? "プレイヤー1" : "あなた";
+    document.getElementById('p2-name-display').textContent = (gameMode === "pvp") ? "プレイヤー2" : "AI";
 
     document.getElementById('setup-screen').classList.add('hidden');
     document.getElementById('game-screen').classList.remove('hidden');
 
-    log(`ゲーム開始！あなたの役職カード: 【${ROLES[pCard].name}】`, true);
-    updateUI();
+    log(`ゲーム開始！`, true);
+    if (gameMode !== "pvp") {
+        log(`あなたの役職: 【${ROLES[p1Card].name}】`);
+    }
+
+    startRoundTurn(1);
 }
 
-function updateUI() {
-    document.getElementById('p-silver').textContent = pSilver;
-    document.getElementById('ai-silver').textContent = aiSilver;
-    document.getElementById('p-gold').textContent = pGold;
-    document.getElementById('ai-gold').textContent = aiGold;
-    document.getElementById('round-title').textContent = `【第 ${currentRound} / 5 ラウンド】`;
+function startRoundTurn(playerNum) {
+    currentTurnPlayer = playerNum;
+    document.getElementById('mask-panel').classList.add('hidden');
+    document.getElementById('action-panel').classList.remove('hidden');
+
+    const pName = (gameMode === "pvp") ? `プレイヤー${playerNum}` : "あなた";
+    document.getElementById('turn-indicator').textContent = (gameMode === "pvp") ? `【${pName}の入力ターン】` : "";
+
+    const currentSilver = (playerNum === 1) ? p1Silver : p2Silver;
+    const currentCard = (playerNum === 1) ? p1Card : p2Card;
+    const currentUsed = (playerNum === 1) ? p1UsedCard : p2UsedCard;
 
     const remR = 6 - currentRound;
     const minP = 1;
-    const maxP = (remR === 1) ? pSilver : pSilver - (remR - 1);
+    const maxP = (remR === 1) ? currentSilver : currentSilver - (remR - 1);
 
     const silverInput = document.getElementById('silver-choice');
     silverInput.min = minP;
@@ -266,191 +328,240 @@ function updateUI() {
     silverInput.value = Math.min(Math.max(10, minP), maxP);
 
     if (remR === 1) {
-        silverInput.value = pSilver;
+        silverInput.value = currentSilver;
         silverInput.disabled = true;
-        document.getElementById('silver-input-label').textContent = `最終Rのため全額（${pSilver}枚）投入されます:`;
+        document.getElementById('silver-input-label').textContent = `最終Rのため全額（${currentSilver}枚）投入:`;
+    } else {
+        silverInput.disabled = false;
+        document.getElementById('silver-input-label').textContent = `${pName} の提示銀貨枚数:`;
     }
 
-    // カード使用可否チェック
     const cardSelect = document.getElementById('card-use-select');
     const cardInfo = document.getElementById('my-card-info');
 
-    if (pUsedCard) {
+    if (currentUsed) {
         cardSelect.disabled = true;
+        cardSelect.value = "0";
         cardInfo.textContent = "※役職カードは使用済みです";
     } else {
         let usable = true;
         let reason = "";
-        if (pCard === 1 && currentRound === 1) { usable = false; reason = "第1R使用不可"; }
-        else if (pCard === 3 && currentRound !== 5) { usable = false; reason = "第5R専用"; }
-        else if (pCard === 4 && currentRound === 5) { usable = false; reason = "第5R使用不可"; }
+        if (currentCard === 1 && currentRound === 1) { usable = false; reason = "第1R使用不可"; }
+        else if (currentCard === 3 && currentRound !== 5) { usable = false; reason = "第5R専用"; }
+        else if (currentCard === 4 && currentRound === 5) { usable = false; reason = "第5R使用不可"; }
 
         cardSelect.disabled = !usable;
-        cardInfo.textContent = `【${ROLES[pCard].name}】 (${ROLES[pCard].desc}) ${usable ? '' : ' ⚠️' + reason}`;
-        if (!usable) cardSelect.value = "0";
+        cardSelect.value = "0";
+        cardInfo.textContent = `【${ROLES[currentCard].name}】 (${ROLES[currentCard].desc}) ${usable ? '' : ' ⚠️' + reason}`;
     }
 }
 
-function playRound() {
+function handleInputSubmit() {
     const remR = 6 - currentRound;
-    let pChoice = parseInt(document.getElementById('silver-choice').value);
+    const currentSilver = (currentTurnPlayer === 1) ? p1Silver : p2Silver;
     const minP = 1;
-    const maxP = (remR === 1) ? pSilver : pSilver - (remR - 1);
+    const maxP = (remR === 1) ? currentSilver : currentSilver - (remR - 1);
 
-    if (isNaN(pChoice) || pChoice < minP || pChoice > maxP) {
+    let choice = parseInt(document.getElementById('silver-choice').value);
+    if (isNaN(choice) || choice < minP || choice > maxP) {
         alert(`${minP}〜${maxP}枚の範囲で入力してください。`);
         return;
     }
 
-    let pRole = null;
-    if (!pUsedCard && document.getElementById('card-use-select').value === "1") {
-        pRole = pCard;
-        pUsedCard = true;
+    let role = null;
+    const currentUsed = (currentTurnPlayer === 1) ? p1UsedCard : p2UsedCard;
+    const currentCard = (currentTurnPlayer === 1) ? p1Card : p2Card;
+
+    if (!currentUsed && document.getElementById('card-use-select').value === "1") {
+        role = currentCard;
+        if (currentTurnPlayer === 1) p1UsedCard = true;
+        else p2UsedCard = true;
     }
 
-    // AIの銀貨思考
-    let aiChoice = 0;
-    if (remR === 1) {
-        aiChoice = aiSilver;
+    if (gameMode === "pvp" && currentTurnPlayer === 1) {
+        p1ChoiceTemp = choice;
+        p1RoleTemp = role;
+        // 遮蔽画面へ移行
+        document.getElementById('action-panel').classList.add('hidden');
+        document.getElementById('mask-panel').classList.remove('hidden');
     } else {
+        // AIモードまたはPvPのP2入力完了時
+        let p2Choice = choice;
+        let p2Role = role;
+
+        if (gameMode === "vs-ai") {
+            // AIの思考
+            const aiData = calculateAIChoice(remR);
+            p2Choice = aiData.choice;
+            p2Role = aiData.role;
+        } else {
+            p1Choice = p1ChoiceTemp;
+            p1Role = p1RoleTemp;
+        }
+
+        const p1ChoiceFinal = (gameMode === "pvp") ? p1ChoiceTemp : choice;
+        const p1RoleFinal = (gameMode === "pvp") ? p1RoleTemp : role;
+
+        executeRound(p1ChoiceFinal, p1RoleFinal, p2Choice, p2Role);
+    }
+}
+
+function proceedToP2Turn() {
+    startRoundTurn(2);
+}
+
+function calculateAIChoice(remR) {
+    let choice = 0;
+    if (remR === 1) choice = p2Silver;
+    else {
         const minAi = 1;
-        const maxAi = aiSilver - (remR - 1);
-        const avg = aiSilver / remR;
-        aiChoice = Math.floor(Math.random() * (Math.min(maxAi, Math.floor(avg+2)) - Math.max(minAi, Math.floor(avg-2)) + 1)) + Math.max(minAi, Math.floor(avg-2));
+        const maxAi = p2Silver - (remR - 1);
+        const avg = p2Silver / remR;
+        choice = Math.floor(Math.random() * (Math.min(maxAi, Math.floor(avg+2)) - Math.max(minAi, Math.floor(avg-2)) + 1)) + Math.max(minAi, Math.floor(avg-2));
     }
 
-    // AIのカード思考
-    let aiRole = null;
-    if (!aiUsedCard) {
-        let usableAi = true;
-        if (aiCard === 1 && currentRound === 1) usableAi = false;
-        else if (aiCard === 3 && currentRound !== 5) usableAi = false;
-        else if (aiCard === 4 && currentRound === 5) usableAi = false;
+    let role = null;
+    if (!p2UsedCard) {
+        let usable = true;
+        if (p2Card === 1 && currentRound === 1) usable = false;
+        else if (p2Card === 3 && currentRound !== 5) usable = false;
+        else if (p2Card === 4 && currentRound === 5) usable = false;
 
-        if (usableAi) {
+        if (usable) {
             let shouldUse = false;
-            if (aiCard === 1 && aiPrevChoice % 7 === 0 && aiPrevChoice > 0) shouldUse = true;
-            else if (aiCard === 3 && currentRound === 5) shouldUse = true;
-            else if (aiCard === 4 && currentRound <= 3 && Math.random() < 0.6) shouldUse = true;
-            else if (aiCard === 5 && currentRound >= 2 && Math.random() < 0.4) shouldUse = true;
-            else if (aiCard === 6 && currentRound >= 3 && Math.random() < 0.5) shouldUse = true;
-            else if (aiCard === 7 && (aiChoice <= 8 || Math.random() < 0.4)) shouldUse = true;
-            else if (aiCard === 2 && currentRound >= 2 && Math.random() < 0.5) shouldUse = true;
+            if (p2Card === 1 && p2PrevChoice % 7 === 0 && p2PrevChoice > 0) shouldUse = true;
+            else if (p2Card === 3 && currentRound === 5) shouldUse = true;
+            else if (p2Card === 4 && currentRound <= 3 && Math.random() < 0.6) shouldUse = true;
+            else if (p2Card === 5 && currentRound >= 2 && Math.random() < 0.4) shouldUse = true;
+            else if (p2Card === 6 && currentRound >= 3 && Math.random() < 0.5) shouldUse = true;
+            else if (p2Card === 7 && (choice <= 8 || Math.random() < 0.4)) shouldUse = true;
+            else if (p2Card === 2 && currentRound >= 2 && Math.random() < 0.5) shouldUse = true;
 
-            if (currentRound === 5 && usableAi) shouldUse = true;
+            if (currentRound === 5 && usable) shouldUse = true;
 
             if (shouldUse) {
-                aiRole = aiCard;
-                aiUsedCard = true;
+                role = p2Card;
+                p2UsedCard = true;
             }
         }
     }
+    return { choice, role };
+}
 
-    // 結果判定
+function executeRound(p1Choice, p1Role, p2Choice, p2Role) {
+    const p1Name = (gameMode === "pvp") ? "プレイヤー1" : "あなた";
+    const p2Name = (gameMode === "pvp") ? "プレイヤー2" : "AI";
+
     log(`--- 第 ${currentRound} ラウンド ---`);
-    log(`あなた: 銀貨${pChoice}枚 [${pRole ? ROLES[pRole].name : 'カードなし'}]`);
-    log(`  AI   : 銀貨${aiChoice}枚 [${aiRole ? ROLES[aiRole].name : 'カードなし'}]`);
+    log(`${p1Name}: 銀貨${p1Choice}枚 [${p1Role ? ROLES[p1Role].name : 'カードなし'}]`);
+    log(`${p2Name}: 銀貨${p2Choice}枚 [${p2Role ? ROLES[p2Role].name : 'カードなし'}]`);
 
     // 暗殺者判定
-    if (pRole === 2 && aiRole) {
-        log(`🗡️【暗殺者発動！】 相手の役職を無効化し、金貨10枚を獲得！`, true);
-        pGold += 10;
-        aiRole = null;
+    if (p1Role === 2 && p2Role) {
+        log(`🗡️【${p1Name}の暗殺者発動！】 相手の役職を無効化し金貨10枚獲得！`, true);
+        p1Gold += 10;
+        p2Role = null;
     }
-    if (aiRole === 2 && pRole) {
-        log(`🗡️【AIの暗殺者発動！】 あなたの役職を無効化し、AIが金貨10枚を獲得！`, true);
-        aiGold += 10;
-        pRole = null;
+    if (p2Role === 2 && p1Role) {
+        log(`🗡️【${p2Name}の暗殺者発動！】 相手の役職を無効化し金貨10枚獲得！`, true);
+        p2Gold += 10;
+        p1Role = null;
     }
 
     // 勝敗判定
-    const isKing = (pRole === 3 || aiRole === 3);
-    let pWin = false, aiWin = false;
+    const isKing = (p1Role === 3 || p2Role === 3);
+    let p1Win = false, p2Win = false;
     if (isKing) {
         log(`👑【王の効果】銀貨が多い方が勝利！`, true);
-        pWin = pChoice > aiChoice;
-        aiWin = aiChoice > pChoice;
+        p1Win = p1Choice > p2Choice;
+        p2Win = p2Choice > p1Choice;
     } else {
-        pWin = pChoice < aiChoice;
-        aiWin = aiChoice < pChoice;
+        p1Win = p1Choice < p2Choice;
+        p2Win = p2Choice < p1Choice;
     }
 
     // 得点計算
-    if (pWin) {
-        let gain = (pRole === 7) ? aiChoice : pChoice;
-        if (pRole === 7) log(`🌾【農民成功！】 相手の銀貨枚数（${aiChoice}枚）を獲得！`);
-        if (pRole === 1 && pPrevChoice % 7 === 0 && pPrevChoice > 0) { gain *= 2; log(`🎲【博徒成功！】 金貨2倍！`); }
-        if (pRole === 5) { gain *= 2; log(`💰【商人成功！】 金貨2倍！`); }
-        if (aiRole === 6) { gain = 1; log(`🧙‍♂️【相手の魔術師！】 獲得金貨が1枚に制限されました。`); }
+    if (p1Win) {
+        let gain = (p1Role === 7) ? p2Choice : p1Choice;
+        if (p1Role === 7) log(`🌾【農民成功！】 相手の銀貨枚数（${p2Choice}枚）を獲得！`);
+        if (p1Role === 1 && p1PrevChoice % 7 === 0 && p1PrevChoice > 0) { gain *= 2; log(`🎲【博徒成功！】 金貨2倍！`); }
+        if (p1Role === 5) { gain *= 2; log(`💰【商人成功！】 金貨2倍！`); }
+        if (p2Role === 6) { gain = 1; log(`🧙‍♂️【相手の魔術師！】 獲得金貨が1枚に制限されました。`); }
 
-        pGold += gain;
-        log(`✨【あなたの勝利！】 金貨 ${gain}枚 獲得！`, true);
-    } else if (aiWin) {
-        let gain = (aiRole === 7) ? pChoice : aiChoice;
-        if (aiRole === 7) log(`🌾【AIの農民成功！】 あなたの銀貨枚数（${pChoice}枚）を獲得！`);
-        if (aiRole === 1 && aiPrevChoice % 7 === 0 && aiPrevChoice > 0) { gain *= 2; log(`🎲【AIの博徒成功！】 金貨2倍！`); }
-        if (aiRole === 5) { gain *= 2; log(`💰【AIの商人成功！】 金貨2倍！`); }
-        if (pRole === 6) { gain = 1; log(`🧙‍♂️【あなたの魔術師発動！】 相手の獲得金貨を1枚に制限！`); }
+        p1Gold += gain;
+        log(`✨【${p1Name}の勝利！】 金貨 ${gain}枚 獲得！`, true);
+    } else if (p2Win) {
+        let gain = (p2Role === 7) ? p1Choice : p2Choice;
+        if (p2Role === 7) log(`🌾【農民成功！】 相手の銀貨枚数（${p1Choice}枚）を獲得！`);
+        if (p2Role === 1 && p2PrevChoice % 7 === 0 && p2PrevChoice > 0) { gain *= 2; log(`🎲【博徒成功！】 金貨2倍！`); }
+        if (p2Role === 5) { gain *= 2; log(`💰【商人成功！】 金貨2倍！`); }
+        if (p1Role === 6) { gain = 1; log(`🧙‍♂️【魔術師発動！】 相手の獲得金貨を1枚に制限！`); }
 
-        aiGold += gain;
-        if (pRole === 5) { aiGold += 5; log(`⚠️【商人のリスク】 敗北したため相手に金貨5枚が進呈されました。`); }
+        p2Gold += gain;
+        if (p1Role === 5) { p2Gold += 5; log(`⚠️【商人のリスク】 敗北したため相手に金貨5枚が進呈されました。`); }
 
-        log(`🤖【AIの勝利！】 AIが金貨 ${gain}枚 獲得！`, true);
+        log(`✨【${p2Name}の勝利！】 金貨 ${gain}枚 獲得！`, true);
     } else {
         log(`⚔️【引き分け！】 金貨獲得なし。`);
     }
 
-    // 消費と騎士効果
-    pSilver -= pChoice;
-    aiSilver -= aiChoice;
+    p1Silver -= p1Choice;
+    p2Silver -= p2Choice;
 
-    if (pRole === 4) { aiSilver += 10; log(`⚔️【騎士発動！】 相手の銀貨が10枚増えた！`); }
-    if (aiRole === 4) { pSilver += 10; log(`⚔️【AIの騎士発動！】 あなたの銀貨が10枚増えた！`); }
+    if (p1Role === 4) { p2Silver += 10; log(`⚔️【騎士発動！】 相手の銀貨が10枚増えた！`); }
+    if (p2Role === 4) { p1Silver += 10; log(`⚔️【騎士発動！】 相手の銀貨が10枚増えた！`); }
 
-    pPrevChoice = pChoice;
-    aiPrevChoice = aiChoice;
+    p1PrevChoice = p1Choice;
+    p2PrevChoice = p2Choice;
+
+    updateUI();
 
     if (currentRound === 5) {
         endGame();
     } else {
         currentRound++;
-        updateUI();
+        document.getElementById('round-title').textContent = `【第 ${currentRound} / 5 ラウンド】`;
+        startRoundTurn(1);
     }
+}
+
+function updateUI() {
+    document.getElementById('p1-silver').textContent = p1Silver;
+    document.getElementById('p2-silver').textContent = p2Silver;
+    document.getElementById('p1-gold').textContent = p1Gold;
+    document.getElementById('p2-gold').textContent = p2Gold;
 }
 
 function endGame() {
     document.getElementById('action-panel').classList.add('hidden');
+    document.getElementById('mask-panel').classList.add('hidden');
     document.getElementById('restart-btn').classList.remove('hidden');
+
+    const p1Name = (gameMode === "pvp") ? "プレイヤー1" : "あなた";
+    const p2Name = (gameMode === "pvp") ? "プレイヤー2" : "AI";
 
     log(`====================`, true);
     log(`      最終結果      `, true);
     log(`====================`, true);
-    log(`あなた: 金貨 ${pGold} 枚  vs  AI: 金貨 ${aiGold} 枚`);
+    log(`${p1Name}: 金貨 ${p1Gold} 枚  vs  ${p2Name}: 金貨 ${p2Gold} 枚`);
 
-    if (pGold > aiGold) log(`🏆 おめでとうございます！あなたの勝利です！`, true);
-    else if (aiGold > pGold) log(`💀 AIの勝利です！また挑戦してください。`, true);
-    else log(`🤝 見事な相打ち！引き分けです！`, true);
-
-    document.getElementById('p-silver').textContent = pSilver;
-    document.getElementById('ai-silver').textContent = aiSilver;
-    document.getElementById('p-gold').textContent = pGold;
-    document.getElementById('ai-gold').textContent = aiGold;
+    if (p1Gold > p2Gold) log(`🏆 おめでとうございます！ ${p1Name} の勝利です！`, true);
+    else if (p2Gold > p1Gold) log(`🏆 おめでとうございます！ ${p2Name} の勝利です！`, true);
+    else log(`🤝 見事な勝負！引き分けです！`, true);
 }
 
 function resetGame() {
     currentRound = 1;
-    pSilver = 50; aiSilver = 50;
-    pGold = 0; aiGold = 0;
-    pPrevChoice = 0; aiPrevChoice = 0;
-    pUsedCard = false; aiUsedCard = false;
+    p1Silver = 50; p2Silver = 50;
+    p1Gold = 0; p2Gold = 0;
+    p1PrevChoice = 0; p2PrevChoice = 0;
+    p1UsedCard = false; p2UsedCard = false;
 
     document.getElementById('game-log').innerHTML = '';
     document.getElementById('action-panel').classList.remove('hidden');
     document.getElementById('restart-btn').classList.add('hidden');
     document.getElementById('setup-screen').classList.remove('hidden');
     document.getElementById('game-screen').classList.add('hidden');
-    document.getElementById('silver-choice').disabled = false;
-    document.getElementById('silver-input-label').textContent = "提示する銀貨枚数:";
 }
 </script>
 </body>
