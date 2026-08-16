@@ -112,6 +112,14 @@
         button:hover { background: #ffd700; }
         button:disabled { background: #555; cursor: not-allowed; }
 
+        button.btn-secondary {
+            background: #444;
+            color: #fff;
+        }
+        button.btn-secondary:hover {
+            background: #555;
+        }
+
         .card-desc {
             font-size: 0.85rem;
             color: #aaa;
@@ -127,6 +135,61 @@
             background: #111;
             border-radius: 8px;
             border: 2px dashed var(--accent-gold);
+        }
+
+        /* モーダル表示用スタイル */
+        .modal-overlay {
+            position: fixed;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.85);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+
+        .modal-content {
+            background: var(--card-bg);
+            border: 1px solid var(--accent-gold);
+            border-radius: 12px;
+            padding: 24px;
+            max-width: 500px;
+            width: 100%;
+            max-height: 85vh;
+            overflow-y: auto;
+            position: relative;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.8);
+        }
+
+        .modal-content h2 {
+            color: var(--accent-gold);
+            margin-top: 0;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 8px;
+        }
+
+        .rules-body p {
+            line-height: 1.6;
+            font-size: 0.95rem;
+            margin-bottom: 14px;
+        }
+
+        .rules-body ul {
+            padding-left: 20px;
+            margin-bottom: 15px;
+            font-size: 0.9rem;
+            line-height: 1.5;
+        }
+
+        .credit {
+            font-size: 0.75rem;
+            color: #888;
+            text-align: right;
+            margin-top: 20px;
+            font-style: italic;
         }
     </style>
 </head>
@@ -161,6 +224,7 @@
             <div id="p2-card-desc" class="card-desc"></div>
         </div>
 
+        <button class="btn-secondary" onclick="openRules()">ルール説明</button>
         <button onclick="startGame()">ゲーム開始</button>
     </div>
 
@@ -202,14 +266,46 @@
             <button id="submit-btn" onclick="handleInputSubmit()">決定</button>
         </div>
 
-        <!-- 交代用隠し画面 -->
+        <!-- 交代用隠し画面（P1入力完了時） -->
         <div id="mask-panel" class="mask-screen hidden">
             <h3 id="mask-title">プレイヤー1の入力完了</h3>
             <p>相手に画面を見られないように端末を渡してください。</p>
             <button onclick="proceedToP2Turn()">プレイヤー2のターンを開始</button>
         </div>
 
+        <!-- 結果確認用隠し画面（PvP・P2入力完了時） -->
+        <div id="result-mask-panel" class="mask-screen hidden">
+            <h3>両者の選択が完了しました！</h3>
+            <p>準備ができたら、2人で一緒に画面を確認してください。</p>
+            <button onclick="revealRoundResult()">タップして結果を確認！</button>
+        </div>
+
         <button id="restart-btn" class="hidden" onclick="resetGame()">もう一度遊ぶ</button>
+    </div>
+</div>
+
+<!-- ルール説明モーダル -->
+<div id="rules-modal" class="modal-overlay hidden">
+    <div class="modal-content">
+        <h2>ゲームのルール</h2>
+        <div class="rules-body">
+            <p><strong>【基本ルール】</strong><br>
+            各ラウンドで手持ちの銀貨から何枚かを提示します。<br>
+            <strong>より少ない銀貨を提示した『無欲な』プレイヤーが勝利</strong>となり、自分が提示した枚数分の金貨を獲得できます！<br>
+            （※敗者は金貨を獲得できず、提示した銀貨も消費して失います）</p>
+
+            <p><strong>【勝利条件】</strong><br>
+            全5ラウンド終了時、<strong>最終的に獲得した金貨が多い方のプレイヤーの勝ち</strong>です！</p>
+
+            <p><strong>【補足説明】</strong></p>
+            <ul>
+                <li><strong>初期資産:</strong> 各プレイヤー銀貨50枚を持ってスタートします。</li>
+                <li><strong>最終ラウンド:</strong> 第5ラウンドでは手持ちの銀貨を全額投入します。</li>
+                <li><strong>役職カード:</strong> ゲーム中に1度だけ強力な特殊効果を発動できます。ブラフや一発逆転の駆け引きに活用しましょう！</li>
+            </ul>
+        </div>
+        <button onclick="closeRules()">閉じる</button>
+        <div class="credit">This game was created by Satoru Oida.</div>
     </div>
 </div>
 
@@ -234,12 +330,21 @@ let p1UsedCard = false, p2UsedCard = false;
 
 // ターン一時保存（PvP用）
 let p1ChoiceTemp = 0, p1RoleTemp = null;
+let p2ChoiceTemp = 0, p2RoleTemp = null;
 let currentTurnPlayer = 1;
 
 window.onload = function() {
     setupCardDropdowns();
     toggleSetupUI();
 };
+
+function openRules() {
+    document.getElementById('rules-modal').classList.remove('hidden');
+}
+
+function closeRules() {
+    document.getElementById('rules-modal').classList.add('hidden');
+}
 
 function setupCardDropdowns() {
     ['p1-initial-card', 'p2-initial-card'].forEach(id => {
@@ -309,6 +414,7 @@ function startGame() {
 function startRoundTurn(playerNum) {
     currentTurnPlayer = playerNum;
     document.getElementById('mask-panel').classList.add('hidden');
+    document.getElementById('result-mask-panel').classList.add('hidden');
     document.getElementById('action-panel').classList.remove('hidden');
 
     const pName = (gameMode === "pvp") ? `プレイヤー${playerNum}` : "あなた";
@@ -377,34 +483,34 @@ function handleInputSubmit() {
         else p2UsedCard = true;
     }
 
-    if (gameMode === "pvp" && currentTurnPlayer === 1) {
-        p1ChoiceTemp = choice;
-        p1RoleTemp = role;
+    if (gameMode === "pvp") {
+        if (currentTurnPlayer === 1) {
+            p1ChoiceTemp = choice;
+            p1RoleTemp = role;
 
-        document.getElementById('action-panel').classList.add('hidden');
-        document.getElementById('mask-panel').classList.remove('hidden');
-    } else {
-        let p2Choice = choice;
-        let p2Role = role;
-
-        if (gameMode === "vs-ai") {
-            const aiData = calculateAIChoice(remR);
-            p2Choice = aiData.choice;
-            p2Role = aiData.role;
+            document.getElementById('action-panel').classList.add('hidden');
+            document.getElementById('mask-panel').classList.remove('hidden');
         } else {
-            p1Choice = p1ChoiceTemp;
-            p1Role = p1RoleTemp;
+            p2ChoiceTemp = choice;
+            p2RoleTemp = role;
+
+            document.getElementById('action-panel').classList.add('hidden');
+            document.getElementById('result-mask-panel').classList.remove('hidden');
         }
-
-        const p1ChoiceFinal = (gameMode === "pvp") ? p1ChoiceTemp : choice;
-        const p1RoleFinal = (gameMode === "pvp") ? p1RoleTemp : role;
-
-        executeRound(p1ChoiceFinal, p1RoleFinal, p2Choice, p2Role);
+    } else {
+        // VS AI
+        const aiData = calculateAIChoice(remR);
+        executeRound(choice, role, aiData.choice, aiData.role);
     }
 }
 
 function proceedToP2Turn() {
     startRoundTurn(2);
+}
+
+function revealRoundResult() {
+    document.getElementById('result-mask-panel').classList.add('hidden');
+    executeRound(p1ChoiceTemp, p1RoleTemp, p2ChoiceTemp, p2RoleTemp);
 }
 
 function calculateAIChoice(remR) {
@@ -429,7 +535,7 @@ function calculateAIChoice(remR) {
             else if (p2Card === 3 && currentRound >= 2 && Math.random() < 0.5) shouldUse = true;
             else if (p2Card === 4 && currentRound <= 3 && Math.random() < 0.6) shouldUse = true;
             else if (p2Card === 5 && currentRound >= 2 && Math.random() < 0.4) shouldUse = true;
-            else if (p2Card === 6 && currentRound >= 2 && Math.random() < 0.5) shouldUse = true; // 魔術師：負けそうなラウンドで使用
+            else if (p2Card === 6 && currentRound >= 2 && Math.random() < 0.5) shouldUse = true;
             else if (p2Card === 7 && (choice <= 8 || Math.random() < 0.4)) shouldUse = true;
             else if (p2Card === 2 && currentRound >= 2 && Math.random() < 0.5) shouldUse = true;
 
@@ -530,6 +636,7 @@ function updateUI() {
 function endGame() {
     document.getElementById('action-panel').classList.add('hidden');
     document.getElementById('mask-panel').classList.add('hidden');
+    document.getElementById('result-mask-panel').classList.add('hidden');
     document.getElementById('restart-btn').classList.remove('hidden');
 
     const p1Name = (gameMode === "pvp") ? "プレイヤー1" : "あなた";
@@ -551,6 +658,8 @@ function resetGame() {
     p1Gold = 0; p2Gold = 0;
     p1PrevChoice = 0; p2PrevChoice = 0;
     p1UsedCard = false; p2UsedCard = false;
+    p1ChoiceTemp = 0; p1RoleTemp = null;
+    p2ChoiceTemp = 0; p2RoleTemp = null;
 
     document.getElementById('game-log').innerHTML = '';
     document.getElementById('action-panel').classList.remove('hidden');
