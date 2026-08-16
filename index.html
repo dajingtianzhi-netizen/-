@@ -127,7 +127,8 @@
             margin-bottom: 12px;
         }
 
-        .hidden { display: none; }
+        /* どんな表示属性よりも非表示を優先 */
+        .hidden { display: none !important; }
 
         .mask-screen {
             text-align: center;
@@ -291,7 +292,7 @@
         <div class="rules-body">
             <p><strong>【基本ルール】</strong><br>
             各ラウンドで手持ちの銀貨から何枚かを提示します。<br>
-            <strong>より少ない銀貨を提示した『無欲な』プレイヤーが勝利</strong>となり、自分が提示した枚数分の金貨を獲得できます！<br>
+            <strong>より少ない銀貨を提示したプレイヤーが勝利</strong>となり、自分が提示した枚数分の金貨を獲得できます！<br>
             （※敗者は金貨を獲得できず、提示した銀貨も消費して失います）</p>
 
             <p><strong>【勝利条件】</strong><br>
@@ -301,11 +302,11 @@
             <ul>
                 <li><strong>初期資産:</strong> 各プレイヤー銀貨50枚を持ってスタートします。</li>
                 <li><strong>最終ラウンド:</strong> 第5ラウンドでは手持ちの銀貨を全額投入します。</li>
-                <li><strong>役職カード:</strong> ゲーム中に1度だけ強力な特殊効果を発動できます。ブラフや一発逆転の駆け引きに活用しましょう！</li>
+                <li><strong>役職カード:</strong> ゲーム中に1度だけ強力な特殊効果を発動できます。ブラフや一逆転の駆け引きに活用しましょう！</li>
             </ul>
         </div>
         <button onclick="closeRules()">閉じる</button>
-        <div class="credit">This game was created by Satoru Oida.</div>
+        <div class="credit">This game was made by Satoru Oida.</div>
     </div>
 </div>
 
