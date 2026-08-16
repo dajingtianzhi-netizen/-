@@ -217,7 +217,7 @@
 const ROLES = {
     1: { name: "博徒", desc: "前Rで7の倍数を提示していれば勝利時金貨2倍(第1R不可)" },
     2: { name: "暗殺者", desc: "相手の役職を無効化し金貨10枚獲得" },
-    3: { name: "王", desc: "銀貨が多い方が勝利(第5R専用)" },
+    3: { name: "王", desc: "自分の銀貨枚数が実際よりも5枚少なくカウントされる" },
     4: { name: "騎士", desc: "相手の銀貨を10枚増やす(第1〜4R専用)" },
     5: { name: "商人", desc: "勝利時金貨2倍。敗北時相手に金貨5枚進呈" },
     6: { name: "魔術師", desc: "敗北時、相手の獲得金貨を1枚にする" },
@@ -234,7 +234,7 @@ let p1UsedCard = false, p2UsedCard = false;
 
 // ターン一時保存（PvP用）
 let p1ChoiceTemp = 0, p1RoleTemp = null;
-let currentTurnPlayer = 1; // 1 or 2
+let currentTurnPlayer = 1;
 
 window.onload = function() {
     setupCardDropdowns();
@@ -347,7 +347,6 @@ function startRoundTurn(playerNum) {
         let usable = true;
         let reason = "";
         if (currentCard === 1 && currentRound === 1) { usable = false; reason = "第1R使用不可"; }
-        else if (currentCard === 3 && currentRound !== 5) { usable = false; reason = "第5R専用"; }
         else if (currentCard === 4 && currentRound === 5) { usable = false; reason = "第5R使用不可"; }
 
         cardSelect.disabled = !usable;
@@ -381,16 +380,14 @@ function handleInputSubmit() {
     if (gameMode === "pvp" && currentTurnPlayer === 1) {
         p1ChoiceTemp = choice;
         p1RoleTemp = role;
-        // 遮蔽画面へ移行
+
         document.getElementById('action-panel').classList.add('hidden');
         document.getElementById('mask-panel').classList.remove('hidden');
     } else {
-        // AIモードまたはPvPのP2入力完了時
         let p2Choice = choice;
         let p2Role = role;
 
         if (gameMode === "vs-ai") {
-            // AIの思考
             const aiData = calculateAIChoice(remR);
             p2Choice = aiData.choice;
             p2Role = aiData.role;
@@ -424,13 +421,12 @@ function calculateAIChoice(remR) {
     if (!p2UsedCard) {
         let usable = true;
         if (p2Card === 1 && currentRound === 1) usable = false;
-        else if (p2Card === 3 && currentRound !== 5) usable = false;
         else if (p2Card === 4 && currentRound === 5) usable = false;
 
         if (usable) {
             let shouldUse = false;
             if (p2Card === 1 && p2PrevChoice % 7 === 0 && p2PrevChoice > 0) shouldUse = true;
-            else if (p2Card === 3 && currentRound === 5) shouldUse = true;
+            else if (p2Card === 3 && currentRound >= 2 && Math.random() < 0.5) shouldUse = true; // 王：競り勝ちたい場面で使用
             else if (p2Card === 4 && currentRound <= 3 && Math.random() < 0.6) shouldUse = true;
             else if (p2Card === 5 && currentRound >= 2 && Math.random() < 0.4) shouldUse = true;
             else if (p2Card === 6 && currentRound >= 3 && Math.random() < 0.5) shouldUse = true;
@@ -468,17 +464,16 @@ function executeRound(p1Choice, p1Role, p2Choice, p2Role) {
         p1Role = null;
     }
 
-    // 勝敗判定
-    const isKing = (p1Role === 3 || p2Role === 3);
-    let p1Win = false, p2Win = false;
-    if (isKing) {
-        log(`👑【王の効果】銀貨が多い方が勝利！`, true);
-        p1Win = p1Choice > p2Choice;
-        p2Win = p2Choice > p1Choice;
-    } else {
-        p1Win = p1Choice < p2Choice;
-        p2Win = p2Choice < p1Choice;
-    }
+    // 勝敗判定用の実質銀貨数を計算
+    let p1EffChoice = (p1Role === 3) ? p1Choice - 5 : p1Choice;
+    let p2EffChoice = (p2Role === 3) ? p2Choice - 5 : p2Choice;
+
+    if (p1Role === 3) log(`👑【王の効果！】 ${p1Name}の提示銀貨が判定時のみ-5枚（判定: ${p1EffChoice}枚）として扱われます！`, true);
+    if (p2Role === 3) log(`👑【王の効果！】 ${p2Name}の提示銀貨が判定時のみ-5枚（判定: ${p2EffChoice}枚）として扱われます！`, true);
+
+    // 少ない方が勝利
+    let p1Win = p1EffChoice < p2EffChoice;
+    let p2Win = p2EffChoice < p1EffChoice;
 
     // 得点計算
     if (p1Win) {
@@ -492,7 +487,7 @@ function executeRound(p1Choice, p1Role, p2Choice, p2Role) {
         log(`✨【${p1Name}の勝利！】 金貨 ${gain}枚 獲得！`, true);
     } else if (p2Win) {
         let gain = (p2Role === 7) ? p1Choice : p2Choice;
-        if (p2Role === 7) log(`🌾【農民成功！】 相手の銀貨枚数（${p1Choice}枚）を獲得！`);
+        if (p2Role === 7) log(`🌾【農民成功！】 あなたの銀貨枚数（${p1Choice}枚）を獲得！`);
         if (p2Role === 1 && p2PrevChoice % 7 === 0 && p2PrevChoice > 0) { gain *= 2; log(`🎲【博徒成功！】 金貨2倍！`); }
         if (p2Role === 5) { gain *= 2; log(`💰【商人成功！】 金貨2倍！`); }
         if (p1Role === 6) { gain = 1; log(`🧙‍♂️【魔術師発動！】 相手の獲得金貨を1枚に制限！`); }
