@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>心理戦ゲーム：無欲の銀貨</title>
+    <style>
+        :root {
+            --bg-color: #1a1a1a;
+            --card-bg: #2d2d2d;
+            --accent-gold: #ffd700;
+            --accent-silver: #c0c0c0;
+            --text-color: #ffffff;
+            --border-color: #444;
+        }
+
+        body {
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 600px;
+            background: var(--card-bg);
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+            border: 1px solid var(--border-color);
+        }
+
+        h1 {
+            text-align: center;
+            color: var(--accent-gold);
+            margin-top: 0;
+            font-size: 1.8rem;
+            border-bottom: 2px solid var(--accent-gold);
+            padding-bottom: 10px;
+        }
+
+        .status-board {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-bottom: 20px;
+            background: #222;
+            padding: 15px;
+            border-radius: 8px;
+        }
+
+        .player-status {
+            padding: 10px;
+            border-radius: 6px;
+            background: #333;
+            text-align: center;
+        }
+
+        .player-status h3 { margin: 0 0 10px 0; font-size: 1.1rem; }
+        .stat-val { font-size: 1.2rem; font-weight: bold; }
+        .silver { color: var(--accent-silver); }
+        .gold { color: var(--accent-gold); }
+
+        .log-area {
+            height: 220px;
+            background: #111;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            padding: 10px;
+            overflow-y: auto;
+            font-size: 0.95rem;
+            line-height: 1.5;
+            margin-bottom: 20px;
+        }
+
+        .log-entry { margin-bottom: 8px; border-bottom: 1px solid #222; padding-bottom: 4px; }
+        .log-alert { color: var(--accent-gold); font-weight: bold; }
+
+        .control-panel {
+            background: #222;
+            padding: 15px;
+            border-radius: 8px;
+        }
+
+        label { display: block; margin-bottom: 8px; font-weight: bold; }
+        
+        select, input[type="number"], button {
+            width: 100%;
+            padding: 10px;
+            margin-bottom: 12px;
+            border-radius: 6px;
+            border: 1px solid var(--border-color);
+            background: #333;
+            color: #fff;
+            font-size: 1rem;
+            box-sizing: border-box;
+        }
+
+        button {
+            background: #d4af37;
+            color: #000;
+            font-weight: bold;
+            cursor: pointer;
+            border: none;
+            transition: 0.2s;
+        }
+
+        button:hover { background: #ffd700; }
+        button:disabled { background: #555; cursor: not-allowed; }
+
+        .card-desc {
+            font-size: 0.85rem;
+            color: #aaa;
+            margin-top: -8px;
+            margin-bottom: 12px;
+        }
+
+        .hidden { display: none; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>心理戦ゲーム：無欲の銀貨</h1>
+
+    <!-- 1. ゲーム準備画面 -->
+    <div id="setup-screen">
+        <label>配分ルールの選択:</label>
+        <select id="mode-select" onchange="toggleCardSelect()">
+            <option value="1">全所持型（一覧からカードを選択）</option>
+            <option value="2">ランダム配布型（ランダムで1枚配布）</option>
+        </select>
+
+        <div id="card-select-group">
+            <label>持参する役職カードを選択:</label>
+            <select id="initial-card-select"></select>
+            <div id="selected-card-desc" class="card-desc"></div>
+        </div>
+
+        <button onclick="startGame()">ゲーム開始</button>
+    </div>
+
+    <!-- 2. ゲームプレイ画面 -->
+    <div id="game-screen" class="hidden">
+        <div class="status-board">
+            <div class="player-status">
+                <h3>あなた</h3>
+                <div>銀貨: <span id="p-silver" class="stat-val silver">50</span>枚</div>
+                <div>金貨: <span id="p-gold" class="stat-val gold">0</span>枚</div>
+            </div>
+            <div class="player-status">
+                <h3>AI</h3>
+                <div>銀貨: <span id="ai-silver" class="stat-val silver">50</span>枚</div>
+                <div>金貨: <span id="ai-gold" class="stat-val gold">0</span>枚</div>
+            </div>
+        </div>
+
+        <div id="round-title" style="text-align: center; font-weight: bold; margin-bottom: 10px; color: var(--accent-gold);">
+            【第 1 / 5 ラウンド】
+        </div>
+
+        <div class="log-area" id="game-log"></div>
+
+        <div class="control-panel" id="action-panel">
+            <label id="silver-input-label">提示する銀貨枚数:</label>
+            <input type="number" id="silver-choice" min="1" max="46" value="10">
+
+            <label>役職カードの使用:</label>
+            <select id="card-use-select">
+                <option value="0">使用しない</option>
+                <option value="1">使用する</option>
+            </select>
+            <div id="my-card-info" class="card-desc"></div>
+
+            <button id="submit-btn" onclick="playRound()">決定して勝負！</button>
+        </div>
+
+        <button id="restart-btn" class="hidden" onclick="resetGame()">もう一度遊ぶ</button>
+    </div>
+</div>
+
+<script>
+const ROLES = {
+    1: { name: "博徒", desc: "前Rで7の倍数を提示していれば勝利時金貨2倍(第1R不可)" },
+    2: { name: "暗殺者", desc: "相手の役職を無効化し金貨10枚獲得" },
+    3: { name: "王", desc: "銀貨が多い方が勝利(第5R専用)" },
+    4: { name: "騎士", desc: "相手の銀貨を10枚増やす(第1〜4R専用)" },
+    5: { name: "商人", desc: "勝利時金貨2倍。敗北時相手に金貨5枚進呈" },
+    6: { name: "魔術師", desc: "敗北時、相手の獲得金貨を1枚にする" },
+    7: { name: "農民", desc: "勝利時、獲得金貨が相手の提示した銀貨の枚数になる" }
+};
+
+let currentRound = 1;
+let pSilver = 50, aiSilver = 50;
+let pGold = 0, aiGold = 0;
+let pPrevChoice = 0, aiPrevChoice = 0;
+let pCard = null, aiCard = null;
+let pUsedCard = false, aiUsedCard = false;
+
+// 初期ロード時の処理
+window.onload = function() {
+    const cardSelect = document.getElementById('initial-card-select');
+    for (let id in ROLES) {
+        let opt = document.createElement('option');
+        opt.value = id;
+        opt.textContent = `${ROLES[id].name}`;
+        cardSelect.appendChild(opt);
+    }
+    cardSelect.onchange = updateCardDesc;
+    updateCardDesc();
+};
+
+function toggleCardSelect() {
+    const mode = document.getElementById('mode-select').value;
+    document.getElementById('card-select-group').style.display = (mode === "1") ? "block" : "none";
+}
+
+function updateCardDesc() {
+    const id = document.getElementById('initial-card-select').value;
+    document.getElementById('selected-card-desc').textContent = ROLES[id].desc;
+}
+
+function log(msg, isAlert = false) {
+    const logArea = document.getElementById('game-log');
+    const div = document.createElement('div');
+    div.className = isAlert ? "log-entry log-alert" : "log-entry";
+    div.innerHTML = msg;
+    logArea.appendChild(div);
+    logArea.scrollTop = logArea.scrollHeight;
+}
+
+function startGame() {
+    const mode = document.getElementById('mode-select').value;
+    if (mode === "1") {
+        pCard = parseInt(document.getElementById('initial-card-select').value);
+    } else {
+        pCard = Math.floor(Math.random() * 7) + 1;
+    }
+    aiCard = Math.floor(Math.random() * 7) + 1;
+
+    document.getElementById('setup-screen').classList.add('hidden');
+    document.getElementById('game-screen').classList.remove('hidden');
+
+    log(`ゲーム開始！あなたの役職カード: 【${ROLES[pCard].name}】`, true);
+    updateUI();
+}
+
+function updateUI() {
+    document.getElementById('p-silver').textContent = pSilver;
+    document.getElementById('ai-silver').textContent = aiSilver;
+    document.getElementById('p-gold').textContent = pGold;
+    document.getElementById('ai-gold').textContent = aiGold;
+    document.getElementById('round-title').textContent = `【第 ${currentRound} / 5 ラウンド】`;
+
+    const remR = 6 - currentRound;
+    const minP = 1;
+    const maxP = (remR === 1) ? pSilver : pSilver - (remR - 1);
+
+    const silverInput = document.getElementById('silver-choice');
+    silverInput.min = minP;
+    silverInput.max = maxP;
+    silverInput.value = Math.min(Math.max(10, minP), maxP);
+
+    if (remR === 1) {
+        silverInput.value = pSilver;
+        silverInput.disabled = true;
+        document.getElementById('silver-input-label').textContent = `最終Rのため全額（${pSilver}枚）投入されます:`;
+    }
+
+    // カード使用可否チェック
+    const cardSelect = document.getElementById('card-use-select');
+    const cardInfo = document.getElementById('my-card-info');
+
+    if (pUsedCard) {
+        cardSelect.disabled = true;
+        cardInfo.textContent = "※役職カードは使用済みです";
+    } else {
+        let usable = true;
+        let reason = "";
+        if (pCard === 1 && currentRound === 1) { usable = false; reason = "第1R使用不可"; }
+        else if (pCard === 3 && currentRound !== 5) { usable = false; reason = "第5R専用"; }
+        else if (pCard === 4 && currentRound === 5) { usable = false; reason = "第5R使用不可"; }
+
+        cardSelect.disabled = !usable;
+        cardInfo.textContent = `【${ROLES[pCard].name}】 (${ROLES[pCard].desc}) ${usable ? '' : ' ⚠️' + reason}`;
+        if (!usable) cardSelect.value = "0";
+    }
+}
+
+function playRound() {
+    const remR = 6 - currentRound;
+    let pChoice = parseInt(document.getElementById('silver-choice').value);
+    const minP = 1;
+    const maxP = (remR === 1) ? pSilver : pSilver - (remR - 1);
+
+    if (isNaN(pChoice) || pChoice < minP || pChoice > maxP) {
+        alert(`${minP}〜${maxP}枚の範囲で入力してください。`);
+        return;
+    }
+
+    let pRole = null;
+    if (!pUsedCard && document.getElementById('card-use-select').value === "1") {
+        pRole = pCard;
+        pUsedCard = true;
+    }
+
+    // AIの銀貨思考
+    let aiChoice = 0;
+    if (remR === 1) {
+        aiChoice = aiSilver;
+    } else {
+        const minAi = 1;
+        const maxAi = aiSilver - (remR - 1);
+        const avg = aiSilver / remR;
+        aiChoice = Math.floor(Math.random() * (Math.min(maxAi, Math.floor(avg+2)) - Math.max(minAi, Math.floor(avg-2)) + 1)) + Math.max(minAi, Math.floor(avg-2));
+    }
+
+    // AIのカード思考
+    let aiRole = null;
+    if (!aiUsedCard) {
+        let usableAi = true;
+        if (aiCard === 1 && currentRound === 1) usableAi = false;
+        else if (aiCard === 3 && currentRound !== 5) usableAi = false;
+        else if (aiCard === 4 && currentRound === 5) usableAi = false;
+
+        if (usableAi) {
+            let shouldUse = false;
+            if (aiCard === 1 && aiPrevChoice % 7 === 0 && aiPrevChoice > 0) shouldUse = true;
+            else if (aiCard === 3 && currentRound === 5) shouldUse = true;
+            else if (aiCard === 4 && currentRound <= 3 && Math.random() < 0.6) shouldUse = true;
+            else if (aiCard === 5 && currentRound >= 2 && Math.random() < 0.4) shouldUse = true;
+            else if (aiCard === 6 && currentRound >= 3 && Math.random() < 0.5) shouldUse = true;
+            else if (aiCard === 7 && (aiChoice <= 8 || Math.random() < 0.4)) shouldUse = true;
+            else if (aiCard === 2 && currentRound >= 2 && Math.random() < 0.5) shouldUse = true;
+
+            if (currentRound === 5 && usableAi) shouldUse = true;
+
+            if (shouldUse) {
+                aiRole = aiCard;
+                aiUsedCard = true;
+            }
+        }
+    }
+
+    // 結果判定
+    log(`--- 第 ${currentRound} ラウンド ---`);
+    log(`あなた: 銀貨${pChoice}枚 [${pRole ? ROLES[pRole].name : 'カードなし'}]`);
+    log(`  AI   : 銀貨${aiChoice}枚 [${aiRole ? ROLES[aiRole].name : 'カードなし'}]`);
+
+    // 暗殺者判定
+    if (pRole === 2 && aiRole) {
+        log(`🗡️【暗殺者発動！】 相手の役職を無効化し、金貨10枚を獲得！`, true);
+        pGold += 10;
+        aiRole = null;
+    }
+    if (aiRole === 2 && pRole) {
+        log(`🗡️【AIの暗殺者発動！】 あなたの役職を無効化し、AIが金貨10枚を獲得！`, true);
+        aiGold += 10;
+        pRole = null;
+    }
+
+    // 勝敗判定
+    const isKing = (pRole === 3 || aiRole === 3);
+    let pWin = false, aiWin = false;
+    if (isKing) {
+        log(`👑【王の効果】銀貨が多い方が勝利！`, true);
+        pWin = pChoice > aiChoice;
+        aiWin = aiChoice > pChoice;
+    } else {
+        pWin = pChoice < aiChoice;
+        aiWin = aiChoice < pChoice;
+    }
+
+    // 得点計算
+    if (pWin) {
+        let gain = (pRole === 7) ? aiChoice : pChoice;
+        if (pRole === 7) log(`🌾【農民成功！】 相手の銀貨枚数（${aiChoice}枚）を獲得！`);
+        if (pRole === 1 && pPrevChoice % 7 === 0 && pPrevChoice > 0) { gain *= 2; log(`🎲【博徒成功！】 金貨2倍！`); }
+        if (pRole === 5) { gain *= 2; log(`💰【商人成功！】 金貨2倍！`); }
+        if (aiRole === 6) { gain = 1; log(`🧙‍♂️【相手の魔術師！】 獲得金貨が1枚に制限されました。`); }
+
+        pGold += gain;
+        log(`✨【あなたの勝利！】 金貨 ${gain}枚 獲得！`, true);
+    } else if (aiWin) {
+        let gain = (aiRole === 7) ? pChoice : aiChoice;
+        if (aiRole === 7) log(`🌾【AIの農民成功！】 あなたの銀貨枚数（${pChoice}枚）を獲得！`);
+        if (aiRole === 1 && aiPrevChoice % 7 === 0 && aiPrevChoice > 0) { gain *= 2; log(`🎲【AIの博徒成功！】 金貨2倍！`); }
+        if (aiRole === 5) { gain *= 2; log(`💰【AIの商人成功！】 金貨2倍！`); }
+        if (pRole === 6) { gain = 1; log(`🧙‍♂️【あなたの魔術師発動！】 相手の獲得金貨を1枚に制限！`); }
+
+        aiGold += gain;
+        if (pRole === 5) { aiGold += 5; log(`⚠️【商人のリスク】 敗北したため相手に金貨5枚が進呈されました。`); }
+
+        log(`🤖【AIの勝利！】 AIが金貨 ${gain}枚 獲得！`, true);
+    } else {
+        log(`⚔️【引き分け！】 金貨獲得なし。`);
+    }
+
+    // 消費と騎士効果
+    pSilver -= pChoice;
+    aiSilver -= aiChoice;
+
+    if (pRole === 4) { aiSilver += 10; log(`⚔️【騎士発動！】 相手の銀貨が10枚増えた！`); }
+    if (aiRole === 4) { pSilver += 10; log(`⚔️【AIの騎士発動！】 あなたの銀貨が10枚増えた！`); }
+
+    pPrevChoice = pChoice;
+    aiPrevChoice = aiChoice;
+
+    if (currentRound === 5) {
+        endGame();
+    } else {
+        currentRound++;
+        updateUI();
+    }
+}
+
+function endGame() {
+    document.getElementById('action-panel').classList.add('hidden');
+    document.getElementById('restart-btn').classList.remove('hidden');
+
+    log(`====================`, true);
+    log(`      最終結果      `, true);
+    log(`====================`, true);
+    log(`あなた: 金貨 ${pGold} 枚  vs  AI: 金貨 ${aiGold} 枚`);
+
+    if (pGold > aiGold) log(`🏆 おめでとうございます！あなたの勝利です！`, true);
+    else if (aiGold > pGold) log(`💀 AIの勝利です！また挑戦してください。`, true);
+    else log(`🤝 見事な相打ち！引き分けです！`, true);
+
+    document.getElementById('p-silver').textContent = pSilver;
+    document.getElementById('ai-silver').textContent = aiSilver;
+    document.getElementById('p-gold').textContent = pGold;
+    document.getElementById('ai-gold').textContent = aiGold;
+}
+
+function resetGame() {
+    currentRound = 1;
+    pSilver = 50; aiSilver = 50;
+    pGold = 0; aiGold = 0;
+    pPrevChoice = 0; aiPrevChoice = 0;
+    pUsedCard = false; aiUsedCard = false;
+
+    document.getElementById('game-log').innerHTML = '';
+    document.getElementById('action-panel').classList.remove('hidden');
+    document.getElementById('restart-btn').classList.add('hidden');
+    document.getElementById('setup-screen').classList.remove('hidden');
+    document.getElementById('game-screen').classList.add('hidden');
+    document.getElementById('silver-choice').disabled = false;
+    document.getElementById('silver-input-label').textContent = "提示する銀貨枚数:";
+}
+</script>
+</body>
+</html>
