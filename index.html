@@ -306,7 +306,7 @@
             </ul>
         </div>
         <button onclick="closeRules()">閉じる</button>
-        <div class="credit">This game was created by Satoru Oida.</div>
+        <div class="credit">This game was made by Satoru Oida.</div>
     </div>
 </div>
 
@@ -314,10 +314,10 @@
 const ROLES = {
     1: { name: "博徒", desc: "前Rで7の倍数を提示していれば勝利時金貨2倍(第1R不可)" },
     2: { name: "暗殺者", desc: "相手の役職を無効化し金貨10枚獲得" },
-    3: { name: "王", desc: "このラウンドでは、自分が提示した銀貨の枚数よりも5枚差し引いて勝敗が判断される" },
+    3: { name: "王", desc: "勝負時に自分が提示した銀貨枚数から5枚差し引いて勝敗が判断される" },
     4: { name: "騎士", desc: "相手の銀貨を10枚増やす(第1〜4R専用)" },
     5: { name: "商人", desc: "勝利時金貨2倍。敗北時相手に金貨5枚進呈" },
-    6: { name: "魔術師", desc: "敗北時、相手の獲得金貨枚数を5枚に固定する" },
+    6: { name: "魔術師", desc: "敗北時、相手の獲得金貨枚数を10枚に固定する" },
     7: { name: "農民", desc: "勝利時、獲得金貨が相手の提示した銀貨の枚数になる" }
 };
 
@@ -588,7 +588,7 @@ function executeRound(p1Choice, p1Role, p2Choice, p2Role) {
         if (p1Role === 7) log(`🌾【農民成功！】 相手の銀貨枚数（${p2Choice}枚）を獲得！`);
         if (p1Role === 1 && p1PrevChoice % 7 === 0 && p1PrevChoice > 0) { gain *= 2; log(`🎲【博徒成功！】 金貨2倍！`); }
         if (p1Role === 5) { gain *= 2; log(`💰【商人成功！】 金貨2倍！`); }
-        if (p2Role === 6) { gain = 5; log(`🧙‍♂️【相手の魔術師！】 獲得金貨が5枚に固定されました。`); }
+        if (p2Role === 6) { gain = 10; log(`🧙‍♂️【相手の魔術師！】 獲得金貨が10枚に固定されました。`); }
 
         p1Gold += gain;
         log(`✨【${p1Name}の勝利！】 金貨 ${gain}枚 獲得！`, true);
@@ -597,7 +597,7 @@ function executeRound(p1Choice, p1Role, p2Choice, p2Role) {
         if (p2Role === 7) log(`🌾【農民成功！】 あなたの銀貨枚数（${p1Choice}枚）を獲得！`);
         if (p2Role === 1 && p2PrevChoice % 7 === 0 && p2PrevChoice > 0) { gain *= 2; log(`🎲【博徒成功！】 金貨2倍！`); }
         if (p2Role === 5) { gain *= 2; log(`💰【商人成功！】 金貨2倍！`); }
-        if (p1Role === 6) { gain = 5; log(`🧙‍♂️【魔術師発動！】 相手の獲得金貨を5枚に固定！`); }
+        if (p1Role === 6) { gain = 10; log(`🧙‍♂️【魔術師発動！】 相手の獲得金貨を10枚に固定！`); }
 
         p2Gold += gain;
         if (p1Role === 5) { p2Gold += 5; log(`⚠️【商人のリスク】 敗北したため相手に金貨5枚が進呈されました。`); }
